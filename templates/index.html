@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="成都地铁">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#e6007e">
+    <meta name="description" content="成都地铁线路查询与AI智能路线推荐">
+    <link rel="manifest" href="/static/manifest.json">
+    <link rel="icon" href="/static/icon-192.png">
+    <link rel="apple-touch-icon" href="/static/icon-192.png">
+    <title>成都地铁智能规划</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; }
+        body, html, #container { margin:0; padding:0; width:100%; height:100%; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; }
+
+        /* ---- 控制面板 ---- */
+        .control-panel {
+            position: absolute; top: 10px; left: 10px; background: rgba(255,255,255,0.95);
+            padding: 10px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+            z-index: 1000; width: 280px; font-size: 14px;
+            transition: transform 0.3s, opacity 0.3s;
+        }
+        .control-panel input, .control-panel select { width: 100%; margin: 4px 0; padding: 7px 8px; border-radius: 4px; border: 1px solid #ccc; font-size: 14px; }
+        .control-panel button { padding: 7px 10px; background: #e6007e; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
+        .control-panel button:hover { background: #c4006a; }
+        .btn-row { display: flex; justify-content: space-between; gap: 6px; margin-top: 6px; }
+        .btn-row button { flex: 1; }
+
+        /* ---- 结果面板 ---- */
+        #result {
+            position: absolute; bottom: 10px; left: 10px; background: rgba(255,255,255,0.95);
+            padding: 10px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+            z-index: 999; max-width: 380px; max-height: 50vh; overflow-y: auto;
+            font-size: 14px; display: none;
+        }
+
+        /* ---- 对话面板 ---- */
+        #chatMessages {
+            position: absolute; bottom: 10px; right: 10px; background: rgba(255,255,255,0.95);
+            padding: 10px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+            z-index: 999; max-width: 360px; max-height: 50vh; overflow-y: auto;
+            font-size: 14px; display: none;
+        }
+
+        /* ---- 组件样式 ---- */
+        .ai-badge { display: inline-block; background: #e6007e; color: white; padding: 1px 6px; border-radius: 3px; font-size: 11px; margin-left: 4px; }
+        .route-card { background: #f5f5f5; border-left: 3px solid #e6007e; padding: 6px 8px; margin: 6px 0; border-radius: 4px; font-size: 13px; }
+        .route-card.best { border-left-color: #00a650; background: #f0fff4; }
+        #stationList option { font-size: 14px; }
+        .chat-panel { margin-top: 6px; border-top: 1px solid #eee; padding-top: 6px; }
+        .chat-panel input { width: 100%; margin: 3px 0; padding: 7px 8px; border-radius: 4px; border: 1px solid #ddd; font-size: 13px; }
+        .chat-panel input:focus { border-color: #e6007e; outline: none; }
+        .chat-msg { padding: 6px 8px; margin: 4px 0; border-radius: 6px; font-size: 13px; line-height: 1.5; }
+        .chat-msg.ai { background: #fff3f8; border: 1px solid #ffd6e8; }
+        .chat-msg.user { background: #f0f7ff; border: 1px solid #d6e8ff; text-align: right; }
+        .metric-row { display: flex; flex-wrap: wrap; gap: 3px 10px; margin: 3px 0; font-size: 12px; color: #666; }
+        .metric-item { white-space: nowrap; }
+        .metric-item b { color: #333; }
+
+        /* ---- 面板折叠按钮（移动端） ---- */
+        .panel-toggle {
+            display: none; position: absolute; top: 10px; right: 10px; z-index: 1001;
+            width: 40px; height: 40px; border-radius: 50%; background: #e6007e; color: white;
+            border: none; font-size: 20px; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+
+        /* ============ 移动端适配（Android / iOS） ============ */
+        @media (max-width: 768px) {
+            .panel-toggle { display: flex; align-items: center; justify-content: center; }
+
+            .control-panel {
+                top: 0; left: 0; right: 0; width: 100%; max-width: 100%;
+                border-radius: 0 0 12px 12px; padding: 8px 12px;
+                font-size: 14px; max-height: 85vh; overflow-y: auto;
+                transform: translateY(0);
+            }
+            .control-panel.collapsed {
+                transform: translateY(-100%);
+                opacity: 0; pointer-events: none;
+            }
+
+            .control-panel input, .control-panel select { padding: 10px 8px; font-size: 16px; }
+            .control-panel button { padding: 10px; font-size: 16px; }
+            .chat-panel input { padding: 10px 8px; font-size: 16px; }
+
+            #result {
+                bottom: 0; left: 0; right: 0; max-width: 100%; max-height: 40vh;
+                border-radius: 12px 12px 0 0; font-size: 13px;
+            }
+
+            #chatMessages {
+                bottom: 0; right: 0; left: 0; max-width: 100%; max-height: 40vh;
+                border-radius: 12px 12px 0 0; font-size: 13px;
+            }
+
+            .route-card { font-size: 12px; }
+            .metric-row { font-size: 11px; }
+        }
+
+        /* 小屏手机 (< 400px) */
+        @media (max-width: 400px) {
+            .control-panel { padding: 6px 8px; font-size: 13px; }
+            .control-panel input, .control-panel select { padding: 8px 6px; font-size: 14px; margin: 2px 0; }
+            .control-panel button { padding: 8px; font-size: 14px; }
+            #result, #chatMessages { max-height: 35vh; font-size: 12px; }
+        }
+    </style>
+</head>
+<body>
+<div id="container"></div>
+<button class="panel-toggle" id="panelToggle" onclick="togglePanel()" title="显示/隐藏控制面板">☰</button>
+<div class="control-panel" id="controlPanel">
+    <b>🚇 成都地铁线路查询</b>
+    <input type="text" id="start" placeholder="起点站" list="stationList" autocomplete="off">
+    <input type="text" id="end" placeholder="终点站" list="stationList" autocomplete="off">
+    <datalist id="stationList"></datalist>
+    <select id="strategy">
+        <option value="shortest">最短距离</option>
+        <option value="min_transfer">最少换乘</option>
+        <option value="min_fare">最少花费</option>
+        <option value="min_time">最短时间</option>
+        <option value="ai_recommend">🤖 智能推荐</option>
+    </select>
+    <select id="timePeriod" style="display:none;">
+        <option value="0">高峰时段</option>
+        <option value="1" selected>平峰时段</option>
+        <option value="2">低峰时段</option>
+    </select>
+    <div style="display:flex; justify-content:space-between; margin-top:8px;">
+        <button onclick="searchPath()">查询路径</button>
+        <button onclick="clearPath()" style="background:#555;">清除</button>
+    </div>
+    <div class="chat-panel">
+        <input type="text" id="chatQuery" placeholder="💬 对话查询，如：有老人想步行最少选哪条？">
+        <button onclick="sendChat()" style="width:100%; margin-top:3px; background:#0078d4;">🤖 AI对话查询</button>
+    </div>
+</div>
+<div id="result"></div>
+<div id="chatMessages" style="position:absolute; bottom:30px; right:10px; background:rgba(255,255,255,0.95); padding:10px; border-radius:8px; box-shadow:0 2px 10px rgba(0,0,0,0.3); z-index:1000; max-width:360px; max-height:55vh; overflow-y:auto; font-size:14px; display:none;"></div>
+
+<script>
+    // 高德 Key（Web端）与安全密钥
+    const AMAP_KEY = "0e8a4ec20c2079a036103e6f919dedc0";
+    const AMAP_SECRET = "095cabae79de5cc2879eb4e72cf3a4af";
+    window._AMapSecurityConfig = { securityJsCode: AMAP_SECRET };
+
+    // 线路颜色（官方色板）
+    const lineColors = {
+        "1号线": "#0033a0", "2号线": "#ed6c00", "3号线": "#e6007e",
+        "4号线": "#00a650", "5号线": "#a05eb5", "6号线": "#8a6125",
+        "7号线": "#00b0f0", "8号线": "#97d700", "9号线": "#003da5",
+        "10号线": "#007749", "18号线": "#912688"
+    };
+
+    let map, allLinesData = {}, allCoords = {};
+    let currentPolyline = null, currentMarkers = [];
+    // 换乘站集合（站点名->出现次数）
+    let transferStations = new Set();
+
+    // 策略切换时控制时段选择器显示
+    document.getElementById('strategy').addEventListener('change', function() {
+        const tp = document.getElementById('timePeriod');
+        if (this.value === 'min_time' || this.value === 'ai_recommend') {
+            tp.style.display = 'block';
+        } else {
+            tp.style.display = 'none';
+        }
+    });
+
+    window.onload = function() {
+        loadScript();
+    };
+
+    function loadScript() {
+        const script = document.createElement('script');
+        script.src = `https://webapi.amap.com/maps?v=2.0&key=${AMAP_KEY}&callback=initMap`;
+        script.onerror = () => alert("高德地图加载失败，请检查密钥或网络");
+        document.head.appendChild(script);
+    }
+
+    function initMap() {
+        map = new AMap.Map('container', {
+            zoom: 11,
+            center: [104.07, 30.67],
+            mapStyle: 'amap://styles/light',
+            features: ['bg', 'road', 'building'],
+        });
+
+        Promise.all([
+            fetch('/api/lines').then(r => r.json()),
+            fetch('/api/station_coords').then(r => r.json())
+        ]).then(([lines, coords]) => {
+            allLinesData = lines;
+            allCoords = coords;
+            // 计算换乘站：出现在多条线路中的站点
+            const lineStationMap = {};
+            for (const [lineName, stations] of Object.entries(lines)) {
+                for (const st of stations) {
+                    if (!lineStationMap[st]) lineStationMap[st] = new Set();
+                    lineStationMap[st].add(lineName);
+                }
+            }
+            for (const [st, lineSet] of Object.entries(lineStationMap)) {
+                if (lineSet.size > 1) transferStations.add(st);
+            }
+            drawAllLines();
+            drawAllStations();
+            populateStationList();
+        });
+    }
+
+    // 绘制所有线路（带编号标签）
+    function drawAllLines() {
+        for (const [lineName, stations] of Object.entries(allLinesData)) {
+            const path = [];
+            for (const st of stations) {
+                const coord = allCoords[st];
+                if (coord) path.push(coord);
+            }
+            if (path.length > 0) {
+                const polyline = new AMap.Polyline({
+                    path: path,
+                    strokeColor: lineColors[lineName] || "#666",
+                    strokeWeight: 5,
+                    strokeOpacity: 0.8,
+                    lineJoin: 'round',
+                    lineCap: 'round',
+                });
+                polyline.setMap(map);
+
+                // 在线路中间位置添加线路编号标记
+                const midIdx = Math.floor(path.length / 2);
+                const midCoord = path[midIdx];
+                if (midCoord) {
+                    const marker = new AMap.Marker({
+                        position: midCoord,
+                        content: `<div style="background:${lineColors[lineName]}; color:white; border-radius:50%; width:20px; height:20px; line-height:20px; text-align:center; font-weight:bold; font-size:12px; border:2px solid white; box-shadow:0 0 4px rgba(0,0,0,0.3);">${lineName.replace('号线','')}</div>`,
+                        offset: new AMap.Pixel(-10, -10),
+                    });
+                    marker.setMap(map);
+                }
+            }
+        }
+    }
+
+    // 绘制所有站点（普通站小圆点，换乘站双圈）
+    function drawAllStations() {
+        for (const [name, coord] of Object.entries(allCoords)) {
+            const isTransfer = transferStations.has(name);
+            const size = isTransfer ? 8 : 5;
+            const color = isTransfer ? '#333' : '#888';
+            const bgColor = '#fff';
+            const content = isTransfer ? 
+                `<div style="width:16px; height:16px; border:3px solid ${color}; border-radius:50%; background:${bgColor}; box-shadow:0 0 4px rgba(0,0,0,0.3);"></div>` :
+                `<div style="width:10px; height:10px; background:${color}; border-radius:50%; box-shadow:0 0 2px rgba(0,0,0,0.5);"></div>`;
+            
+            const marker = new AMap.Marker({
+                position: coord,
+                content: content,
+                offset: new AMap.Pixel(-(size+2)/2, -(size+2)/2),
+                zIndex: isTransfer ? 100 : 50,
+            });
+            marker.setMap(map);
+
+            // 添加站名标签（仅显示换乘站和重点站）
+            if (isTransfer) {
+                const labelMarker = new AMap.Marker({
+                    position: coord,
+                    content: `<div style="font-size:12px; color:#333; text-shadow:0 0 2px white; white-space:nowrap;">${name}</div>`,
+                    offset: new AMap.Pixel(12, -6),
+                });
+                labelMarker.setMap(map);
+            }
+        }
+    }
+
+    // 自动完成列表
+    function populateStationList() {
+        const datalist = document.getElementById('stationList');
+        datalist.innerHTML = '';
+        Object.keys(allCoords).sort().forEach(name => {
+            const opt = document.createElement('option');
+            opt.value = name;
+            datalist.appendChild(opt);
+        });
+    }
+
+    // 路径查询
+    function searchPath() {
+        const start = document.getElementById('start').value.trim();
+        const end = document.getElementById('end').value.trim();
+        const strategy = document.getElementById('strategy').value;
+        const tpVal = parseInt(document.getElementById('timePeriod').value);
+        const timePeriod = isNaN(tpVal) ? 1 : tpVal;  // 修复：0是合法值
+        if (!start || !end) return alert("请输入起终点站");
+
+        // 先清除上一次的结果
+        clearPath();
+
+        const apiUrl = strategy === 'ai_recommend' ? '/api/ai_recommend' : '/api/find_path';
+        const body = { start, end };
+        if (strategy === 'ai_recommend') {
+            body.time_period = timePeriod;
+        } else {
+            body.strategy = strategy;
+            if (strategy === 'min_time') body.time_period = timePeriod;
+        }
+
+        fetch(apiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) return alert(data.error);
+            if (strategy === 'ai_recommend') {
+                showAIResult(data);
+                const bestRoute = data.routes && data.routes.length > 0 ? data.routes[data.best_route_idx || 0] : null;
+                if (bestRoute && bestRoute.path) highlightPath(bestRoute.path);
+            } else {
+                showResult(data);
+                highlightPath(data.path);
+            }
+        })
+        .catch(err => {
+            alert('查询失败：' + err.message);
+            console.error(err);
+        });
+    }
+
+    function showResult(data) {
+        const div = document.getElementById('result');
+        div.style.display = 'block';
+        const wd = data.walking_distance || 0;
+        const tt = data.time || 0;
+        const rt = data.ride_time || 0;
+        const wt = data.walk_time || 0;
+        const wat = data.wait_time || 0;
+        let html = `<b>📋 规划结果</b><br>
+            <span>距离：${(data.distance/1000).toFixed(2)} km | 换乘：${data.transfers}次 | 票价：${data.fare}元</span>`;
+        if (tt > 0) {
+            html += ` | ⏱ 耗时：${tt.toFixed(1)} 分钟`;
+        }
+        html += `<br>`;
+        if (tt > 0) {
+            html += `<div class="metric-row">`;
+            html += `<span class="metric-item">🚇 乘车 <b>${rt.toFixed(1)}分</b></span>`;
+            html += `<span class="metric-item">🚶 步行 <b>${wt.toFixed(1)}分</b></span>`;
+            html += `<span class="metric-item">⏳ 候车 <b>${wat.toFixed(1)}分</b></span>`;
+            if (wd > 0) html += `<span class="metric-item">🚶 站内步行 <b>${wd}米</b></span>`;
+            html += `</div>`;
+        }
+        html += buildSegmentsHTML(data.path);
+        div.innerHTML = html;
+    }
+
+    function showAIResult(data) {
+        const div = document.getElementById('result');
+        div.style.display = 'block';
+        let badge = data.ai_powered ? '<span class="ai-badge">AI分析</span>' : '<span class="ai-badge" style="background:#888;">智能评分</span>';
+        let html = `<b>🤖 智能推荐</b> ${badge}<br>`;
+        html += `<div style="margin:8px 0; padding:8px; background:#fff3f8; border-radius:6px; line-height:1.6;">${data.recommendation.replace(/\n/g, '<br>')}</div>`;
+
+        // 备选路线
+        if (data.routes && data.routes.length > 1) {
+            html += `<details><summary style="cursor:pointer; color:#e6007e; font-weight:bold;">📋 查看备选路线 (${data.routes.length}条)</summary>`;
+            data.routes.forEach((route, idx) => {
+                html += buildRouteDetailCard(route, idx === (data.best_route_idx || 0));
+            });
+            html += `</details>`;
+        } else if (data.routes && data.routes.length === 1) {
+            html += buildRouteDetailCard(data.routes[0], true);
+        }
+
+        div.innerHTML = html;
+    }
+
+    // 对话查询
+    function sendChat() {
+        const start = document.getElementById('start').value.trim();
+        const end = document.getElementById('end').value.trim();
+        const query = document.getElementById('chatQuery').value.trim();
+        const tpVal = parseInt(document.getElementById('timePeriod').value);
+        const timePeriod = isNaN(tpVal) ? 1 : tpVal;
+        if (!start || !end) return alert('请先输入起点站和终点站');
+        if (!query) return alert('请输入您的问题，如：有老人想步行最少选哪条？');
+
+        // 先清除上一次的结果
+        clearPath();
+
+        const chatDiv = document.getElementById('chatMessages');
+        chatDiv.style.display = 'block';
+        chatDiv.innerHTML = `<div class="chat-msg user">💬 ${query}</div><div class="chat-msg ai">⏳ 正在分析...</div>`;
+
+        fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ start, end, query, time_period: timePeriod })
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) { chatDiv.innerHTML = `<div class="chat-msg ai">❌ ${data.error}</div>`; return; }
+            renderChatResult(data);
+            const bestRoute = data.routes[data.best_route_idx || 0];
+            if (bestRoute && bestRoute.path) highlightPath(bestRoute.path);
+        })
+        .catch(err => {
+            chatDiv.innerHTML = `<div class="chat-msg ai">❌ 网络错误：${err.message}</div>`;
+            console.error(err);
+        });
+    }
+
+    function renderChatResult(data) {
+        const chatDiv = document.getElementById('chatMessages');
+        let badge = data.ai_powered ? '<span class="ai-badge">DeepSeek AI</span>' : '<span class="ai-badge" style="background:#888;">智能分析</span>';
+        let html = `<div class="chat-msg ai">${badge}<br>${data.reply.replace(/\n/g, '<br>')}</div>`;
+
+        // 显示推荐路线详情
+        if (data.routes && data.routes.length > 0) {
+            const best = data.routes[data.best_route_idx || 0];
+            html += `<div class="chat-msg ai">`;
+            html += buildRouteDetailCard(best, true);
+            html += `</div>`;
+
+            // 备选路线
+            if (data.routes.length > 1) {
+                html += `<div class="chat-msg ai"><details><summary style="cursor:pointer; color:#e6007e;">📋 查看其他方案 (${data.routes.length-1}条)</summary>`;
+                data.routes.forEach((r, i) => {
+                    if (i !== (data.best_route_idx || 0)) {
+                        html += buildRouteDetailCard(r, false);
+                    }
+                });
+                html += `</details></div>`;
+            }
+        }
+        chatDiv.innerHTML = html;
+    }
+
+    function buildRouteDetailCard(route, isBest) {
+        const wd = route.walking_distance || 0;
+        const tt = route.time || 0;
+        const rt = route.ride_time || 0;
+        const wt = route.walk_time || 0;
+        const wat = route.wait_time || 0;
+
+        let html = `<div class="route-card${isBest ? ' best' : ''}">`;
+        html += `<b>${isBest ? '⭐ ' : ''}${route.strategy_name || '路线'}</b><br>`;
+        html += `<span>${(route.distance/1000).toFixed(2)}km | 💰${route.fare}元 | 🔄${route.transfers}次换乘</span><br>`;
+        html += `<div class="metric-row">`;
+        html += `<span class="metric-item">⏱ 总耗时 <b>${tt.toFixed(1)}分钟</b></span>`;
+        html += `<span class="metric-item">🚇 乘车 <b>${rt.toFixed(1)}分</b></span>`;
+        html += `<span class="metric-item">🚶 步行 <b>${wt.toFixed(1)}分</b></span>`;
+        html += `<span class="metric-item">⏳ 候车 <b>${wat.toFixed(1)}分</b></span>`;
+        html += `</div>`;
+        html += `<div class="metric-row"><span class="metric-item">🚶 站内步行总距离 <b>${wd}米</b></span></div>`;
+        if (route.path) html += buildSegmentsHTML(route.path);
+        html += `</div>`;
+        return html;
+    }
+
+    function buildSegmentsHTML(path) {
+        let segments = [];
+        let curLine = null, segStart = null;
+        for (const step of path) {
+            const st = step[0], line = step[1], dist = step[2], type = step[3];
+            const transferDist = step.length > 4 ? step[4] : 0;
+            if (type === 'start') { curLine = line; segStart = st; }
+            else if (type === 'transfer') {
+                segments.push({line: curLine, from: segStart, to: st, transferDist: transferDist});
+                curLine = line; segStart = st;
+            }
+        }
+        if (curLine && segStart) {
+            segments.push({line: curLine, from: segStart, to: path[path.length-1][0], transferDist: 0});
+        }
+        let html = '<ol style="margin:4px 0; padding-left:18px;">';
+        segments.forEach(seg => {
+            let tdInfo = seg.transferDist > 0 ? ` <span style="font-size:11px;color:#e6007e;">🚶${seg.transferDist}米换乘</span>` : '';
+            html += `<li><b style="color:${lineColors[seg.line] || '#666'}">${seg.line}</b> ${seg.from} → ${seg.to}${tdInfo}</li>`;
+        });
+        html += '</ol>';
+        return html;
+    }
+
+    function highlightPath(path) {
+        // 清除旧路径
+        if (currentPolyline) { currentPolyline.setMap(null); currentPolyline = null; }
+        currentMarkers.forEach(m => m.setMap(null));
+        currentMarkers = [];
+
+        const points = [];
+        path.forEach(step => {
+            const coord = allCoords[step[0]];
+            if (coord) points.push(coord);
+        });
+
+        if (points.length > 0) {
+            currentPolyline = new AMap.Polyline({
+                path: points,
+                strokeColor: '#FF0000',
+                strokeWeight: 7,
+                strokeOpacity: 0.9,
+                lineJoin: 'round',
+            });
+            currentPolyline.setMap(map);
+            map.setFitView([currentPolyline], true, [300, 100, 300, 100]);
+        }
+
+        // 起点终点标记
+        const startCoord = allCoords[path[0][0]];
+        const endCoord = allCoords[path[path.length-1][0]];
+        if (startCoord) {
+            const m1 = new AMap.Marker({ 
+                position: startCoord,
+                content: '<div style="background:red; color:white; padding:2px 6px; border-radius:4px; font-weight:bold;">起点</div>',
+                offset: new AMap.Pixel(-10, -30),
+            });
+            m1.setMap(map);
+            currentMarkers.push(m1);
+        }
+        if (endCoord) {
+            const m2 = new AMap.Marker({ 
+                position: endCoord,
+                content: '<div style="background:green; color:white; padding:2px 6px; border-radius:4px; font-weight:bold;">终点</div>',
+                offset: new AMap.Pixel(-10, -30),
+            });
+            m2.setMap(map);
+            currentMarkers.push(m2);
+        }
+    }
+
+    function clearPath() {
+        if (currentPolyline) { currentPolyline.setMap(null); currentPolyline = null; }
+        currentMarkers.forEach(m => m.setMap(null));
+        currentMarkers = [];
+        document.getElementById('result').style.display = 'none';
+        document.getElementById('chatMessages').style.display = 'none';
+        document.getElementById('chatMessages').innerHTML = '';
+        document.getElementById('chatQuery').value = '';
+    }
+
+    // 移动端面板折叠
+    function togglePanel() {
+        const panel = document.getElementById('controlPanel');
+        panel.classList.toggle('collapsed');
+        const btn = document.getElementById('panelToggle');
+        btn.textContent = panel.classList.contains('collapsed') ? '☰' : '✕';
+    }
+
+    // PWA Service Worker 注册
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/static/sw.js').then(reg => {
+                console.log('SW registered:', reg.scope);
+            }).catch(err => {
+                console.log('SW registration failed:', err);
+            });
+        });
+    }
+</script>
+</body>
+</html>

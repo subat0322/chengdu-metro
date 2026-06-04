@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.env
+.idea/
+.git/
+*.md
+plans/
+.DS_Store

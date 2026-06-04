@@ -1,0 +1,11 @@
+.env
+__pycache__/
+*.pyc
+.idea/
+*.exe
+/tmp/
+/dist/
+/build/
+*.spec
+cloudflared.exe
+cf-tunnel.exe

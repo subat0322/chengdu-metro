@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  chengdu-metro:
+    build: .
+    image: chengdu-metro:latest
+    container_name: chengdu-metro
+    ports:
+      - "5000:5000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    environment:
+      - MODE=prod
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_API_BASE=${LLM_API_BASE:-https://api.deepseek.com/v1}
+      - LLM_MODEL=${LLM_MODEL:-deepseek-chat}
+    # x86 / 鲲鹏ARM64 自动适配
