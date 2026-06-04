@@ -47,8 +47,8 @@ if [ "$MODE" = "docker" ]; then
     fi
 
     # 构建
-    docker compose build
-    docker compose up -d
+    docker compose build 2>/dev/null || docker-compose build
+    docker compose up -d 2>/dev/null || docker-compose up -d
 
     echo ""
     echo -e "${GREEN}✅ 部署完成！${NC}"
